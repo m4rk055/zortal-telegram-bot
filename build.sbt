@@ -38,3 +38,13 @@ addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1")
 testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework"))
 
 assemblyJarName in assembly := "zortal.jar"
+
+enablePlugins(GraalVMNativeImagePlugin)
+
+// graalVMNativeImageOptions ++= Seq(
+//   "--report-unsupported-elements-at-runtime",
+//   "--allow-incomplete-classpath",
+//   "--no-fallback",
+// )
+
+// graalVMNativeImageGraalVersion := Some("19.3.1-java8")
