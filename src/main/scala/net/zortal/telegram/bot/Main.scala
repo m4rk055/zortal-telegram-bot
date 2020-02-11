@@ -15,7 +15,7 @@ import zio.internal.{ Platform, PlatformLive }
 import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
 import zio.duration.Duration
 
-case class State(lastCheck: ZonedDateTime)
+case class State(lastPublished: ZonedDateTime)
 case class Article(published: ZonedDateTime, title: String, link: String)
 
 case class Config(
@@ -30,19 +30,19 @@ object Main extends App {
 
   def reqFeed(state: Ref[State]) =
     for {
-      lastCheck              <- state.get.map(_.lastCheck)
-      (updated, newArticles) <- ZortalFeedApi.>.getFeed(lastCheck)
+      lastPublished <- state.get.map(_.lastPublished)
+      newArticles   <- ZortalFeedApi.>.getFeed(lastPublished)
       _ <- if (newArticles.length > 0)
-            TelegramBot.>.sendArticles(newArticles.take(2))
+            TelegramBot.>.sendArticles(newArticles.take(2)) *>
+              state.update(_.copy(lastPublished = newArticles.map(_.published).max))
           else ZIO.unit
-      _ <- state.update(_.copy(lastCheck = updated))
     } yield ()
 
   def handleZortalFeed(state: Ref[State], feedCheckDelay: Duration) = {
 
     val onError = for {
       now <- clock.currentDateTime
-      _   <- state.update(_.copy(lastCheck = now.toZonedDateTime))
+      _   <- state.update(_.copy(lastPublished = now.toZonedDateTime))
       _   <- putStrLn("Some error with Zortal feed")
     } yield ()
 

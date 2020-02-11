@@ -47,7 +47,6 @@ object Util {
               status = Status.Ok,
               body = Stream("""
                       <feed>
-                        <updated>2020-01-01T13:00:00Z</updated>
                         <entry>
                           <title type="html"><![CDATA[Title 3]]></title>
                           <published>2020-01-01T13:00:00Z</published>
@@ -181,7 +180,7 @@ object Test
           } yield {
             assert(sent.length, equalTo(responses.length)) &&
             assert(sent.toSet, equalTo(responses.toSet)) &&
-            assert(newState.lastCheck, equalTo(ZonedDateTime.parse("2020-01-01T13:00:00Z")))
+            assert(newState.lastPublished, equalTo(ZonedDateTime.parse("2020-01-01T13:00:00Z")))
           }
         },
         testM("handle telegram messages") {

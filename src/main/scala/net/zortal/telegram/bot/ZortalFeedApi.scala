@@ -21,12 +21,12 @@ trait ZortalFeedApi {
 object ZortalFeedApi {
 
   trait Service[R] {
-    def getFeed(lastCheck: ZonedDateTime): ZIO[R, Throwable, (ZonedDateTime, List[Article])]
+    def getFeed(lastPublished: ZonedDateTime): ZIO[R, Throwable, List[Article]]
   }
 
   object > {
-    def getFeed(lastCheck: ZonedDateTime) =
-      ZIO.accessM[ZortalFeedApi](_.zortalFeedApi.getFeed(lastCheck))
+    def getFeed(lastPublished: ZonedDateTime) =
+      ZIO.accessM[ZortalFeedApi](_.zortalFeedApi.getFeed(lastPublished))
   }
 
   val exponentialBackoffStrategy =
@@ -44,7 +44,7 @@ object ZortalFeedApi {
 
     val zortalFeedApi = new ZortalFeedApi.Service[Any] {
 
-      def getFeed(lastCheck: ZonedDateTime) =
+      def getFeed(lastPublished: ZonedDateTime) =
         for {
           resp <- httpClient
                    .expect[String](endPoint)
@@ -52,22 +52,18 @@ object ZortalFeedApi {
                    // TODO: is there a better way?
                    .provide(new Clock.Live with Random.Live)
 
-          xml     <- ZIO.effect(XML.loadString(resp))
-          updated <- ZIO.effect(ZonedDateTime.parse((xml \ "updated").head.text))
-          newArticles <- if (lastCheck.isEqual(updated))
-                          ZIO.effectTotal(Nil)
-                        else
-                          ZIO.effect(
-                            (xml \ "entry").map { node =>
-                              val title     = Jsoup.parse((node \ "title").text).text()
-                              val published = ZonedDateTime.parse((node \ "published").text)
-                              val link      = ((node \ "link").head \@ "href")
+          xml <- ZIO.effect(XML.loadString(resp))
+          newArticles <- ZIO.effect(
+                          (xml \ "entry").map { node =>
+                            val title     = Jsoup.parse((node \ "title").text).text()
+                            val published = ZonedDateTime.parse((node \ "published").text)
+                            val link      = ((node \ "link").head \@ "href")
 
-                              Article(published, title, link)
-                            }.filter(_.published.isAfter(lastCheck)).toList,
-                          )
+                            Article(published, title, link)
+                          }.filter(_.published.isAfter(lastPublished)).toList,
+                        )
 
-        } yield (updated, newArticles)
+        } yield newArticles
     }
   }
 }
