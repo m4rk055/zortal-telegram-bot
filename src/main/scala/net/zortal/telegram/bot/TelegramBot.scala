@@ -16,12 +16,12 @@ sealed trait Command {
   val responseMsg = this match {
     case Subscribe   => "Успешно сте се претплатили на Зортал!"
     case Unsubscribe => "АЦО СРБИНЕ"
-    case Unknown     => "/daj - претплата на Зортал \n/stop - :("
+    case Help        => "/daj - Претплата на Зортал \n/stop - Одјава претплате са Зортала"
   }
 }
 case object Subscribe   extends Command
 case object Unsubscribe extends Command
-case object Unknown     extends Command
+case object Help        extends Command
 
 trait TelegramBot {
   val telegramBot: TelegramBot.Service[Any]
@@ -48,6 +48,7 @@ object TelegramBot {
   def apply(
     telegramService: TelegramService.Service[Any],
     chatRepository: ChatRepository.Service[Any],
+    name: String,
   ) =
     for {
       offset    <- Ref.make[Long](-1)
@@ -97,17 +98,27 @@ object TelegramBot {
         }
 
         private def handleMessage(msg: Message, result: Ref[Result]) =
-          msg.text match {
-            case Some("/daj") =>
-              result.update(r => r.copy(subscriptions = r.subscriptions + msg.chat.id)) *>
-                telegramService.sendMsg(Subscribe.responseMsg, msg.chat.id)
-            case Some("/stop") =>
-              result.update(r => r.copy(unsubscriptions = r.unsubscriptions + msg.chat.id)) *>
-                telegramService.sendMsg(Unsubscribe.responseMsg, msg.chat.id)
-            case _ =>
-              telegramService.sendMsg(Unknown.responseMsg, msg.chat.id)
-          }
+          msg match {
+            case Message(Some(s"/daj@${`name` }"), _, _, Chat(id), _) =>
+              result.update(r => r.copy(subscriptions = r.subscriptions + id)) *>
+                telegramService.sendMsg(Subscribe.responseMsg, id)
 
+            case Message(Some(s"/stop@${`name` }"), _, _, Chat(id), _) =>
+              result.update(r => r.copy(unsubscriptions = r.unsubscriptions + id)) *>
+                telegramService.sendMsg(Unsubscribe.responseMsg, id)
+
+            case Message(Some(s"/help@${`name` }"), _, _, Chat(id), _) =>
+              telegramService.sendMsg(Help.responseMsg, id)
+
+            case Message(_, Some(NewMember(`name`)), _, Chat(id), _) =>
+              result.update(r => r.copy(subscriptions = r.subscriptions + id)) *>
+                telegramService.sendMsg(Subscribe.responseMsg, id)
+
+            case Message(_, _, Some(LeftMember(`name`)), Chat(id), _) =>
+              result.update(r => r.copy(unsubscriptions = r.unsubscriptions + id))
+
+            case _ => ZIO.unit
+          }
       }
     },
 }

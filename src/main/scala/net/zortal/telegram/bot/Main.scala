@@ -89,21 +89,28 @@ object Main extends App {
     30,
   )
 
+  def getEnv(variableName: String) =
+    system
+      .env(variableName)
+      .flatMap {
+        case Some(v) =>
+          ZIO.effect(v)
+        case None =>
+          ZIO.fail(
+            new Throwable(s"$variableName env variable missing"),
+          )
+      }
+
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
     httpClientRes
       .use(httpClient =>
         for {
           _ <- putStrLn("START")
 
-          zortalUri   <- ZIO.fromEither(Uri.fromString(conf.zortalFeedEndpoint))
-          telegramUri <- ZIO.fromEither(Uri.fromString(conf.telegramEndpoint))
-          telegramBotToken <- system
-                               .env("ZORTAL_TOKEN")
-                               .flatMap {
-                                 case None =>
-                                   ZIO.fail(new Throwable("ZORTAL_TOKEN env variable missing"))
-                                 case Some(t) => ZIO.effect(t)
-                               }
+          zortalUri        <- ZIO.fromEither(Uri.fromString(conf.zortalFeedEndpoint))
+          telegramUri      <- ZIO.fromEither(Uri.fromString(conf.telegramEndpoint))
+          telegramBotToken <- getEnv("ZORTAL_TOKEN")
+          botName          <- getEnv("ZORTAL_BOT_NAME")
 
           inMemChatRepository <- ChatRepository.Dummy.make().map(_.chatRepository)
 
@@ -112,6 +119,7 @@ object Main extends App {
           liveTelegramBot <- TelegramBot(
                               liveTelegramService.telegramService,
                               inMemChatRepository,
+                              botName,
                             ).map(_.telegramBot)
 
           _ <- program(conf.feedCheckDelaySeconds.seconds).provide(

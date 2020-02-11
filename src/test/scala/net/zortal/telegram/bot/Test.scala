@@ -11,9 +11,7 @@ import java.time.{ OffsetDateTime, ZonedDateTime }
 import org.http4s._
 import org.http4s.client.Client
 import cats.effect.Resource
-import net.zortal.telegram.bot.Unknown
-import net.zortal.telegram.bot.Subscribe
-import net.zortal.telegram.bot.Unsubscribe
+import net.zortal.telegram.bot.{ Help, Subscribe, Unsubscribe }
 
 case class SentMessage(msg: String, chatId: Long)
 
@@ -78,17 +76,24 @@ object Util {
               if (x == 0) """
               {
                 "result": [{
+                  "update_id": 105,
+                  "message": {
+                    "date": 5,
+                    "text": "/help@bot",
+                    "chat": {"id": 4}
+                  }
+                }, {
                   "update_id": 104,
                   "message": {
                     "date": 4,
-                    "text": "/random",
-                    "chat": {"id": 4}
+                    "text": "/random@bot",
+                    "chat": {"id": 3}
                   }
                 }, {
                   "update_id": 103,
                   "message": {
                     "date": 3,
-                    "text": "/daj",
+                    "text": "/daj@bot",
                     "chat": {"id": 3}
                   }
                 }, {
@@ -97,7 +102,7 @@ object Util {
                   "update_id": 101,
                   "message": {
                     "date": 2,
-                    "text": "/daj",
+                    "text": "/daj@bot",
                     "chat": {"id": 2}
                   }
                 }, {
@@ -114,15 +119,41 @@ object Util {
                     "update_id": 111,
                     "message": {
                       "date": 11,
-                      "text": "/stop",
+                      "text": "/stop@bot",
                       "chat": {"id": 3}
                     }
                   }, {
                     "update_id": 110,
                     "message": {
                       "date": 10,
-                      "text": "/daj",
+                      "text": "/daj@bot",
                       "chat": {"id": 4}
+                    }
+                  }]
+                }"""
+              else if (x == 2) """
+                {
+                  "result": [{
+                    "update_id": 120,
+                    "message": {
+                      "date": 20,
+                      "new_chat_member": {
+                        "username": "bot"
+                      },
+                      "chat": {"id": 1}
+                    }
+                  }]
+                }"""
+              else if (x == 3) """
+                {
+                  "result": [{
+                    "update_id": 120,
+                    "message": {
+                      "date": 20,
+                      "left_chat_member": {
+                        "username": "bot"
+                      },
+                      "chat": {"id": 1}
                     }
                   }]
                 }"""
@@ -167,6 +198,7 @@ object Test
             telegramBot_ <- TelegramBot(
                              TelegramService(testHttpClient, Util.telegramEndpoint, Util.token).telegramService,
                              chatRepository,
+                             "bot",
                            ).map(_.telegramBot)
 
             _ <- program.provide(new ZortalFeedApi with TelegramBot {
@@ -185,15 +217,18 @@ object Test
         },
         testM("handle telegram messages") {
           val responses1 = List(
-            SentMessage(Unknown.responseMsg, 1),
             SentMessage(Subscribe.responseMsg, 2),
             SentMessage(Subscribe.responseMsg, 3),
-            SentMessage(Unknown.responseMsg, 4),
+            SentMessage(Help.responseMsg, 4),
           )
 
           val responses2 = List(
             SentMessage(Unsubscribe.responseMsg, 3),
             SentMessage(Subscribe.responseMsg, 4),
+          )
+
+          val responses3 = List(
+            SentMessage(Subscribe.responseMsg, 1),
           )
 
           for {
@@ -207,6 +242,7 @@ object Test
             telegramBot_ <- TelegramBot(
                              TelegramService(testHttpClient, Util.telegramEndpoint, Util.token).telegramService,
                              chatRepository,
+                             "bot",
                            ).map(_.telegramBot)
 
             s <- TelegramBot.>.handleMessages(_ => ???).provide(
@@ -230,11 +266,35 @@ object Test
 
             sent2 <- sentMessages.get
 
+            _ <- scenario.update(_ + 1)
+            _ <- sentMessages.set(Nil)
+
+            s <- TelegramBot.>.handleMessages(_ => ???).provide(
+                  new TelegramBot {
+                    val telegramBot = telegramBot_
+                  },
+                )
+            result3 <- s.runHead
+
+            sent3 <- sentMessages.get
+
+            _ <- scenario.update(_ + 1)
+
+            s <- TelegramBot.>.handleMessages(_ => ???).provide(
+                  new TelegramBot {
+                    val telegramBot = telegramBot_
+                  },
+                )
+            result4 <- s.runHead
+
           } yield {
             assert(result1, equalTo(Some(Result(Set(2, 3), Set.empty)))) &&
             assert(sent1.toSet, equalTo(responses1.toSet)) &&
             assert(result2, equalTo(Some(Result(Set(4), Set(3))))) &&
-            assert(sent2.toSet, equalTo(responses2.toSet))
+            assert(sent2.toSet, equalTo(responses2.toSet)) &&
+            assert(result3, equalTo(Some(Result(Set(1), Set.empty)))) &&
+            assert(sent3.toSet, equalTo(responses3.toSet)) &&
+            assert(result4, equalTo(Some(Result(Set.empty, Set(1)))))
           }
         },
       ),

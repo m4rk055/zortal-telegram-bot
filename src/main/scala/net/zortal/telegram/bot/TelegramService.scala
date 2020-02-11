@@ -9,7 +9,15 @@ import org.http4s.client.Client
 
 // TODO: better model
 case class Chat(id: Long)
-case class Message(text: Option[String], chat: Chat, date: Long)
+case class NewMember(username: String)
+case class LeftMember(username: String)
+case class Message(
+  text: Option[String],
+  newMember: Option[NewMember],
+  leftMember: Option[LeftMember],
+  chat: Chat,
+  date: Long,
+)
 case class Update(updateId: Long, message: Option[Message])
 case class PollResponse(results: List[Update])
 
@@ -52,9 +60,8 @@ object TelegramService {
 
       def poll(offset: Long) = {
         val req = endPoint / s"bot$token" / "getUpdates" =? Map(
-          "offset"          -> List((offset + 1).toString),
-          "timeout"         -> List("5"),
-          "allowed_updates" -> List("""["message"]"""),
+          "offset"  -> List((offset + 1).toString),
+          "timeout" -> List("30"),
         )
 
         httpClient.expect[PollResponse](req)
@@ -65,27 +72,41 @@ object TelegramService {
 
 object Decoders {
 
-  implicit val d1: Decoder[Chat] =
+  implicit val chatDecoder =
     Decoder.forProduct1("id")(Chat.apply)
 
-  implicit def ed1: EntityDecoder[Task, Chat] =
+  implicit def chatEDecoder =
     jsonOf[Task, Chat]
 
-  implicit val d2: Decoder[Message] =
-    Decoder.forProduct3("text", "chat", "date")(Message.apply)
+  implicit val newMemberDecoder =
+    Decoder.forProduct1("username")(NewMember.apply)
 
-  implicit def ed2: EntityDecoder[Task, Message] =
+  implicit def newMemberEDecoder =
+    jsonOf[Task, NewMember]
+
+  implicit val leftMemberDecoder =
+    Decoder.forProduct1("username")(LeftMember.apply)
+
+  implicit def leftMemberEDecoder =
+    jsonOf[Task, LeftMember]
+
+  implicit val messageDecoder =
+    Decoder.forProduct5("text", "new_chat_member", "left_chat_member", "chat", "date")(
+      Message.apply,
+    )
+
+  implicit def messageEDecoder =
     jsonOf[Task, Message]
 
-  implicit val d3: Decoder[Update] =
+  implicit val updateDecoder =
     Decoder.forProduct2("update_id", "message")(Update.apply)
 
-  implicit def ed3: EntityDecoder[Task, Update] =
+  implicit def updateEDecoder =
     jsonOf[Task, Update]
 
-  implicit val d4: Decoder[PollResponse] =
+  implicit val pollRespDecoder =
     Decoder.forProduct1("result")(PollResponse.apply)
 
-  implicit def ed4: EntityDecoder[Task, PollResponse] =
+  implicit def pollRespEDecode: EntityDecoder[Task, PollResponse] =
     jsonOf[Task, PollResponse]
 }
