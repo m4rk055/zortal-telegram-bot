@@ -122,6 +122,6 @@ object Main extends App {
           _ <- ZIO.never
         } yield (),
       )
-      .orDie as 1
+      .orDie as 0
 
 }
