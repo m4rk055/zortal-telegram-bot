@@ -59,8 +59,6 @@ object ZortalFeedApi {
                        .expect[String](endPoint)
                        .retry(exponentialBackoffStrategy)
 
-              _ = println(resp.take(10))
-
               xml <- ZIO.effect(XML.loadString(resp))
               newArticles <- ZIO.effect(
                               (xml \ "entry").map { node =>
@@ -74,20 +72,18 @@ object ZortalFeedApi {
               newPublished <- ZIO(newArticles.map(_.published).max)
                                .catchAll(_ => ZIO.effect(lastPublished))
 
-              _ <- ZIO.sleep(delay)
-
             } yield Option((newArticles, newPublished))
 
             elem
-            // TODO: is there a better way?
-              .provide(new Clock with Random {
-                val clock  = clockService
-                val random = randomService
-              })
               .catchAll(e =>
                 onGetFeedError(e) *>
                   ZIO.effect(Some((List.empty, lastPublished))),
               )
+              .zipLeft(ZIO.sleep(delay))
+              .provide(new Clock with Random {
+                val clock  = clockService
+                val random = randomService
+              })
           }
     }
   }
