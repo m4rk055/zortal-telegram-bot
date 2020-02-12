@@ -1,19 +1,16 @@
 package net.zortal.telegram.bot
 
-import cats.effect._
 import zio._
 import zio.console._
-import zio.interop.catz._
 import zio.system
 import zio.system._
 import zio.clock.{ Clock => ZClock }
-import org.http4s.client.blaze.BlazeClientBuilder
-import org.http4s._
-import scala.concurrent.ExecutionContext.global
-import java.time.ZonedDateTime
 import zio.internal.{ Platform, PlatformLive }
-import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
 import zio.duration.Duration
+import sttp.model.Uri
+import sttp.client.asynchttpclient.zio.AsyncHttpClientZioBackend
+import java.time.ZonedDateTime
+import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
 
 case class Article(published: ZonedDateTime, title: String, link: String)
 
@@ -46,13 +43,6 @@ object Main extends App {
       _ <- handleZortalFeedUpdates(feedCheckDelay).fork
     } yield ()
 
-  val httpClientRes = for {
-    implicit0(ce: ConcurrentEffect[Task]) <- ZManaged.fromEffect(
-                                              ZIO.concurrentEffect[Any],
-                                            )
-    client <- BlazeClientBuilder[Task](global).resource.toManaged
-  } yield client
-
   // TODO: to config
   val conf = Config(
     "https://zortal.net/index.php/feed/atom/",
@@ -72,14 +62,18 @@ object Main extends App {
           )
       }
 
+  def getUri(uri: String) =
+    ZIO.fromEither(Uri.parse(uri)).mapError(new Throwable(_))
+
   override def run(args: List[String]): ZIO[ZEnv, Nothing, Int] =
-    httpClientRes
-      .use(httpClient =>
+    Managed
+      .make(AsyncHttpClientZioBackend())(_.close().orDie)
+      .use { implicit client =>
         for {
           _ <- putStrLn("START")
 
-          zortalUri        <- ZIO.fromEither(Uri.fromString(conf.zortalFeedEndpoint))
-          telegramUri      <- ZIO.fromEither(Uri.fromString(conf.telegramEndpoint))
+          zortalUri        <- getUri(conf.zortalFeedEndpoint)
+          telegramUri      <- getUri(conf.telegramEndpoint)
           telegramBotToken <- getEnv("ZORTAL_TOKEN")
           botName          <- getEnv("ZORTAL_BOT_NAME")
 
@@ -92,13 +86,12 @@ object Main extends App {
           liveZortalFeedApi = ZortalFeedApi(
             env.clock,
             env.random,
-            httpClient,
             zortalUri,
             now.toZonedDateTime,
             _ => putStrLn("Some error with polling").provide(envConsole),
           ).zortalFeedApi
 
-          liveTelegramService = TelegramService(httpClient, telegramUri, telegramBotToken)
+          liveTelegramService = TelegramService(telegramUri, telegramBotToken)
           liveTelegramBot <- TelegramBot(
                               liveTelegramService.telegramService,
                               inMemChatRepository,
@@ -120,8 +113,7 @@ object Main extends App {
               )
 
           _ <- ZIO.never
-        } yield (),
-      )
+        } yield ()
+      }
       .orDie as 0
-
 }

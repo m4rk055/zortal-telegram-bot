@@ -1,11 +1,10 @@
 package net.zortal.telegram.bot
 
 import zio._
-import zio.interop.catz._
 import io.circe._
-import org.http4s._
-import org.http4s.circe._
-import org.http4s.client.Client
+import sttp.model.Uri
+import sttp.client._
+import sttp.client.circe._
 
 // TODO: better model
 case class Chat(id: Long)
@@ -34,10 +33,9 @@ object TelegramService {
   }
 
   def apply(
-    httpClient: Client[Task],
     endPoint: Uri,
     token: String,
-  ) = new TelegramService {
+  )(implicit httpClient: SttpBackend[Task, Nothing, NothingT]) = new TelegramService {
 
     import Decoders._
 
@@ -49,22 +47,35 @@ object TelegramService {
         parseMode: String,
       ): ZIO[Any, Throwable, Unit] = {
 
-        val req = endPoint / s"bot$token" / "sendMessage" =? Map(
-          "chat_id"    -> List(chatId.toString),
-          "text"       -> List(msg),
-          "parse_mode" -> List(parseMode),
-        )
+        val uri = endPoint
+          .path(List(s"bot$token", "sendMessage"))
+          .params(
+            Map(
+              "chat_id"    -> chatId.toString,
+              "text"       -> msg,
+              "parse_mode" -> parseMode,
+            ),
+          )
 
-        httpClient.expect[Unit](req)
+        quickRequest.get(uri).send().ignore
       }
 
       def poll(offset: Long) = {
-        val req = endPoint / s"bot$token" / "getUpdates" =? Map(
-          "offset"  -> List((offset + 1).toString),
-          "timeout" -> List("30"),
-        )
 
-        httpClient.expect[PollResponse](req)
+        val uri = endPoint
+          .path(List(s"bot$token", "getUpdates"))
+          .params(
+            Map(
+              "offset"  -> (offset + 1).toString,
+              "timeout" -> "30",
+            ),
+          )
+
+        quickRequest
+          .get(uri)
+          .response(asJson[PollResponse])
+          .send()
+          .flatMap(r => ZIO.fromEither(r.body))
       }
     }
   }
@@ -72,41 +83,23 @@ object TelegramService {
 
 object Decoders {
 
-  implicit val chatDecoder =
+  implicit val chatDecoder: Decoder[Chat] =
     Decoder.forProduct1("id")(Chat.apply)
 
-  implicit def chatEDecoder =
-    jsonOf[Task, Chat]
-
-  implicit val newMemberDecoder =
+  implicit val newMemberDecoder: Decoder[NewMember] =
     Decoder.forProduct1("username")(NewMember.apply)
 
-  implicit def newMemberEDecoder =
-    jsonOf[Task, NewMember]
-
-  implicit val leftMemberDecoder =
+  implicit val leftMemberDecoder: Decoder[LeftMember] =
     Decoder.forProduct1("username")(LeftMember.apply)
 
-  implicit def leftMemberEDecoder =
-    jsonOf[Task, LeftMember]
-
-  implicit val messageDecoder =
+  implicit val messageDecoder: Decoder[Message] =
     Decoder.forProduct5("text", "new_chat_member", "left_chat_member", "chat", "date")(
       Message.apply,
     )
 
-  implicit def messageEDecoder =
-    jsonOf[Task, Message]
-
-  implicit val updateDecoder =
+  implicit val updateDecoder: Decoder[Update] =
     Decoder.forProduct2("update_id", "message")(Update.apply)
 
-  implicit def updateEDecoder =
-    jsonOf[Task, Update]
-
-  implicit val pollRespDecoder =
+  implicit val pollRespDecoder: Decoder[PollResponse] =
     Decoder.forProduct1("result")(PollResponse.apply)
-
-  implicit def pollRespEDecode: EntityDecoder[Task, PollResponse] =
-    jsonOf[Task, PollResponse]
 }

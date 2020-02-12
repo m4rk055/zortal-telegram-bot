@@ -3,19 +3,16 @@ package net.zortal.telegram.bot
 import zio._
 import zio.stream.Stream
 import zio.duration.Duration
-import net.zortal.telegram.bot.Article
-
-import org.http4s.client.Client
-import org.http4s._
-import java.time.ZonedDateTime
-import org.jsoup.Jsoup
-import scala.xml._
-import zio.interop.catz._
-
-import java.time.ZonedDateTime
 import zio.clock.Clock
 import zio.random.Random
 import zio.stream.ZStream
+import net.zortal.telegram.bot.Article
+import java.time.ZonedDateTime
+import java.time.ZonedDateTime
+import org.jsoup.Jsoup
+import scala.xml._
+import sttp.model.Uri
+import sttp.client._
 
 trait ZortalFeedApi {
   val zortalFeedApi: ZortalFeedApi.Service[Any]
@@ -43,11 +40,10 @@ object ZortalFeedApi {
   def apply(
     clockService: Clock.Service[Any],
     randomService: Random.Service[Any],
-    httpClient: Client[Task],
     endPoint: Uri,
     startTime: ZonedDateTime,
     onGetFeedError: Throwable => Task[Unit],
-  ) = new ZortalFeedApi {
+  )(implicit httpClient: SttpBackend[Task, Nothing, NothingT]) = new ZortalFeedApi {
 
     val zortalFeedApi = new ZortalFeedApi.Service[Any] {
 
@@ -55,11 +51,12 @@ object ZortalFeedApi {
         Stream
           .unfoldM[Throwable, List[Article], ZonedDateTime](startTime) { lastPublished =>
             val elem = for {
-              resp <- httpClient
-                       .expect[String](endPoint)
+              resp <- quickRequest
+                       .get(endPoint)
+                       .send()
                        .retry(exponentialBackoffStrategy)
 
-              xml <- ZIO.effect(XML.loadString(resp))
+              xml <- ZIO.effect(XML.loadString(resp.body))
               newArticles <- ZIO.effect(
                               (xml \ "entry").map { node =>
                                 val title     = Jsoup.parse((node \ "title").text).text()
