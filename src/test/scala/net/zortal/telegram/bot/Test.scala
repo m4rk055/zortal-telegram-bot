@@ -7,11 +7,12 @@ import zio.test.Assertion._
 import zio.test.environment.TestClock
 import fs2.{ Stream }
 import fs2.text.utf8Encode
-import java.time.{ OffsetDateTime, ZonedDateTime }
+import java.time.OffsetDateTime
 import org.http4s._
 import org.http4s.client.Client
 import cats.effect.Resource
 import net.zortal.telegram.bot.{ Help, Subscribe, Unsubscribe }
+import zio.duration.Duration
 
 case class SentMessage(msg: String, chatId: Long)
 
@@ -40,29 +41,48 @@ object Util {
 
       val resp: Task[Response[Task]] = req.uri.toString match {
         case s if s.startsWith(zortalFeedEndpoint.toString) =>
-          Task.effect(
-            Response[Task](
-              status = Status.Ok,
-              body = Stream("""
-                      <feed>
-                        <entry>
-                          <title type="html"><![CDATA[Title 3]]></title>
-                          <published>2020-01-01T13:00:00Z</published>
-                          <link href="http://zortal.org/3" />
-                        </entry>
-                        <entry>
-                          <title type="html"><![CDATA[Title 2]]></title>
-                          <published>2020-01-01T12:30:00Z</published>
-                          <link href="http://zortal.org/2" />
-                        </entry>
-                        <entry>
-                          <title type="html"><![CDATA[Title 1]]></title>
-                          <published>2020-01-01T12:00:00Z</published>
-                          <link href="http://zortal.org/1" />
-                        </entry>
-                      </feed>
-                    """).through(utf8Encode),
-            ),
+          scenario.get.map(scenario =>
+            if (scenario == 0)
+              Response[Task](
+                status = Status.Ok,
+                body = Stream("""
+                        <feed>
+                          <entry>
+                            <title type="html"><![CDATA[Title 2]]></title>
+                            <published>2020-01-01T12:30:00Z</published>
+                            <link href="http://zortal.org/2" />
+                          </entry>
+                          <entry>
+                            <title type="html"><![CDATA[Title 1]]></title>
+                            <published>2020-01-01T12:00:00Z</published>
+                            <link href="http://zortal.org/1" />
+                          </entry>
+                        </feed>
+                      """).through(utf8Encode),
+              )
+            else
+              Response[Task](
+                status = Status.Ok,
+                body = Stream("""
+                        <feed>
+                          <entry>
+                            <title type="html"><![CDATA[Title 3]]></title>
+                            <published>2020-01-01T13:00:00Z</published>
+                            <link href="http://zortal.org/3" />
+                          </entry>
+                          <entry>
+                            <title type="html"><![CDATA[Title 2]]></title>
+                            <published>2020-01-01T12:30:00Z</published>
+                            <link href="http://zortal.org/2" />
+                          </entry>
+                          <entry>
+                            <title type="html"><![CDATA[Title 1]]></title>
+                            <published>2020-01-01T12:00:00Z</published>
+                            <link href="http://zortal.org/1" />
+                          </entry>
+                        </feed>
+                      """).through(utf8Encode),
+              ),
           )
         case s if s.startsWith(telSendMsg.toString) => {
           val text   = req.uri.query.params("text")
@@ -178,19 +198,29 @@ object Test
             SentMessage("ЗОРТАЛ - [Title 3](http://zortal.org/3)", 2),
             SentMessage("ЗОРТАЛ - [Title 2](http://zortal.org/2)", 1),
             SentMessage("ЗОРТАЛ - [Title 2](http://zortal.org/2)", 2),
+            SentMessage("ЗОРТАЛ - [Title 1](http://zortal.org/1)", 1),
+            SentMessage("ЗОРТАЛ - [Title 1](http://zortal.org/1)", 2),
           )
 
           for {
             _            <- TestClock.setDateTime(OffsetDateTime.parse("1970-01-01T00:15:00Z"))
-            state        <- Ref.make(State(ZonedDateTime.parse("2020-01-01T12:15:00Z")))
             sentMessages <- Ref.make[List[SentMessage]](Nil)
 
             scenario       <- Ref.make[Int](0)
             testHttpClient = Util.createTestHttpClient(sentMessages, scenario)
 
-            program = Main.reqFeed(state)
+            env <- ZIO.environment[ZEnv]
+            now <- env.clock.currentDateTime
 
-            zortalFeed     = ZortalFeedApi(testHttpClient, Util.zortalFeedEndpoint)
+            testZortalFeedApi = ZortalFeedApi(
+              env.clock,
+              env.random,
+              testHttpClient,
+              Util.zortalFeedEndpoint,
+              now.toZonedDateTime,
+              _ => ZIO.unit,
+            ).zortalFeedApi
+
             chatRepository <- ChatRepository.Dummy.make().map(_.chatRepository)
             _              <- chatRepository.saveChat(1)
             _              <- chatRepository.saveChat(2)
@@ -201,18 +231,22 @@ object Test
                              "bot",
                            ).map(_.telegramBot)
 
-            _ <- program.provide(new ZortalFeedApi with TelegramBot {
-                  val zortalFeedApi = zortalFeed.zortalFeedApi
-                  val telegramBot   = telegramBot_
-                })
+            _ <- ZortalFeedApi.>.getFeed(Duration.Zero)
+                  .provide(
+                    new ZortalFeedApi {
+                      val zortalFeedApi = testZortalFeedApi
+                    },
+                  )
+                  .take(2)
+                  .foreach(articles =>
+                    scenario.update(_ + 1) *> telegramBot_.sendArticles(articles),
+                  )
 
-            sent     <- sentMessages.get
-            newState <- state.get
+            sent <- sentMessages.get
 
           } yield {
             assert(sent.length, equalTo(responses.length)) &&
-            assert(sent.toSet, equalTo(responses.toSet)) &&
-            assert(newState.lastPublished, equalTo(ZonedDateTime.parse("2020-01-01T13:00:00Z")))
+            assert(sent.toSet, equalTo(responses.toSet))
           }
         },
         testM("handle telegram messages") {

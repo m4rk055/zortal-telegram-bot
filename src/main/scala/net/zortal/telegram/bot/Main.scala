@@ -15,7 +15,6 @@ import zio.internal.{ Platform, PlatformLive }
 import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
 import zio.duration.Duration
 
-case class State(lastPublished: ZonedDateTime)
 case class Article(published: ZonedDateTime, title: String, link: String)
 
 case class Config(
@@ -28,29 +27,12 @@ object Main extends App {
 
   override val platform: Platform = PlatformLive.Default.withReportFailure(_ => ())
 
-  def reqFeed(state: Ref[State]) =
-    for {
-      lastPublished <- state.get.map(_.lastPublished)
-      newArticles   <- ZortalFeedApi.>.getFeed(lastPublished)
-      _ <- if (newArticles.length > 0)
-            TelegramBot.>.sendArticles(newArticles.take(2)) *>
-              state.update(_.copy(lastPublished = newArticles.map(_.published).max))
-          else ZIO.unit
-    } yield ()
-
-  def handleZortalFeed(state: Ref[State], feedCheckDelay: Duration) = {
-
-    val onError = for {
-      now <- clock.currentDateTime
-      _   <- state.update(_.copy(lastPublished = now.toZonedDateTime))
-      _   <- putStrLn("Some error with Zortal feed")
-    } yield ()
-
-    reqFeed(state)
-      .catchAll(_ => onError)
-      .repeat(Schedule.fixed(feedCheckDelay))
-      .unit
-  }
+  def handleZortalFeed(feedCheckDelay: Duration) =
+    ZortalFeedApi.>.getFeed(feedCheckDelay).foreach(newArticles =>
+      if (newArticles.length > 0)
+        TelegramBot.>.sendArticles(newArticles.take(2))
+      else ZIO.unit,
+    )
 
   def handleTelegramMessages =
     for {
@@ -68,11 +50,8 @@ object Main extends App {
 
   def program(feedCheckDelay: Duration) =
     for {
-      now   <- clock.currentDateTime
-      state <- Ref.make(State(now.toZonedDateTime))
-
       _ <- handleTelegramMessages.fork
-      _ <- handleZortalFeed(state, feedCheckDelay).fork
+      _ <- handleZortalFeed(feedCheckDelay).fork
     } yield ()
 
   val httpClientRes = for {
@@ -114,7 +93,19 @@ object Main extends App {
 
           inMemChatRepository <- ChatRepository.Dummy.make().map(_.chatRepository)
 
-          liveZortalFeedApi   = ZortalFeedApi(httpClient, zortalUri).zortalFeedApi
+          env        <- ZIO.environment[ZEnv]
+          envConsole <- ZIO.environment[Console]
+          now        <- clock.currentDateTime
+
+          liveZortalFeedApi = ZortalFeedApi(
+            env.clock,
+            env.random,
+            httpClient,
+            zortalUri,
+            now.toZonedDateTime,
+            _ => putStrLn("Some error with feed").provide(envConsole),
+          ).zortalFeedApi
+
           liveTelegramService = TelegramService(httpClient, telegramUri, telegramBotToken)
           liveTelegramBot <- TelegramBot(
                               liveTelegramService.telegramService,
