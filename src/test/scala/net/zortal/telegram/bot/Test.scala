@@ -229,6 +229,7 @@ object Test
                              TelegramService(testHttpClient, Util.telegramEndpoint, Util.token).telegramService,
                              chatRepository,
                              "bot",
+                             _ => ZIO.unit,
                            ).map(_.telegramBot)
 
             _ <- ZortalFeedApi.>.getFeed(Duration.Zero)
@@ -277,49 +278,38 @@ object Test
                              TelegramService(testHttpClient, Util.telegramEndpoint, Util.token).telegramService,
                              chatRepository,
                              "bot",
+                             _ => ZIO.unit,
                            ).map(_.telegramBot)
 
-            s <- TelegramBot.>.handleMessages(_ => ???).provide(
-                  new TelegramBot {
-                    val telegramBot = telegramBot_
-                  },
-                )
-            result1 <- s.runHead
+            program = TelegramBot.>.handleMessages
+              .provide(
+                new TelegramBot {
+                  val telegramBot = telegramBot_
+                },
+              )
+              .runHead
+
+            result1 <- program
 
             sent1 <- sentMessages.get
 
             _ <- scenario.update(_ + 1)
             _ <- sentMessages.set(Nil)
 
-            s <- TelegramBot.>.handleMessages(_ => ???).provide(
-                  new TelegramBot {
-                    val telegramBot = telegramBot_
-                  },
-                )
-            result2 <- s.runHead
+            result2 <- program
 
             sent2 <- sentMessages.get
 
             _ <- scenario.update(_ + 1)
             _ <- sentMessages.set(Nil)
 
-            s <- TelegramBot.>.handleMessages(_ => ???).provide(
-                  new TelegramBot {
-                    val telegramBot = telegramBot_
-                  },
-                )
-            result3 <- s.runHead
+            result3 <- program
 
             sent3 <- sentMessages.get
 
             _ <- scenario.update(_ + 1)
 
-            s <- TelegramBot.>.handleMessages(_ => ???).provide(
-                  new TelegramBot {
-                    val telegramBot = telegramBot_
-                  },
-                )
-            result4 <- s.runHead
+            result4 <- program
 
           } yield {
             assert(result1, equalTo(Some(Result(Set(2, 3), Set.empty)))) &&

@@ -1,7 +1,7 @@
 package net.zortal.telegram.bot
 
 import zio._
-import zio.stream.Stream
+import zio.stream.{ Stream, ZStream }
 import net.zortal.telegram.bot.TelegramService
 import net.zortal.telegram.bot.Message
 import java.util.concurrent.TimeUnit
@@ -32,26 +32,24 @@ object TelegramBot {
   trait Service[R] {
     def sendArticles(articles: List[Article]): ZIO[R, Throwable, Unit]
 
-    def handleMessages(
-      onError: Throwable => Task[Unit],
-    ): ZIO[R, Throwable, Stream[Throwable, Result]]
+    def handleMessages: Stream[Throwable, Result]
   }
 
   object > {
     def sendArticles(articles: List[Article]) =
       ZIO.accessM[TelegramBot](_.telegramBot.sendArticles(articles))
 
-    def handleMessages(onError: Throwable => Task[Unit] = _ => Task.unit) =
-      ZIO.accessM[TelegramBot](_.telegramBot.handleMessages(onError))
+    def handleMessages =
+      ZStream.unwrap(ZIO.access[TelegramBot](_.telegramBot.handleMessages))
   }
 
   def apply(
     telegramService: TelegramService.Service[Any],
     chatRepository: ChatRepository.Service[Any],
     name: String,
+    onHandleMessageError: Throwable => Task[Unit],
   ) =
     for {
-      offset    <- Ref.make[Long](-1)
       startTime <- clock.currentTime(TimeUnit.SECONDS)
     } yield new TelegramBot {
 
@@ -67,35 +65,30 @@ object TelegramBot {
             ),
           )
 
-        def handleMessages(
-          onError: Throwable => Task[Unit],
-        ): ZIO[Any, Throwable, Stream[Throwable, Result]] = {
-
-          val stream = Stream
-            .unfoldM[Throwable, Result, Unit](()) { _ =>
+        def handleMessages =
+          Stream
+            .unfoldM[Throwable, Result, Long](-1) { offset =>
               val elem =
                 for {
                   result <- Ref.make(Result(Set.empty, Set.empty))
-                  offs   <- offset.get
-                  resp   <- telegramService.poll(offs)
+                  resp   <- telegramService.poll(offset)
 
-                  _ <- ZIO
-                        .effect(resp.results.map(_.updateId).max)
-                        .foldM(
-                          _ => ZIO.unit,
-                          maxOffset =>
-                            offset.set(maxOffset) *> ZIO.foreach_(
-                              resp.results.flatMap(_.message).filter(_.date >= startTime),
-                            )(msg => handleMessage(msg, result)),
-                        )
+                  newOffset <- ZIO
+                                .effect(resp.results.map(_.updateId).max)
+                                .zipLeft(
+                                  ZIO.foreach_(
+                                    resp.results.flatMap(_.message).filter(_.date >= startTime),
+                                  )(msg => handleMessage(msg, result)),
+                                )
+                                .catchAll(_ => ZIO.effect(offset))
+
                   res <- result.get
-                } yield Option((res, ()))
+                } yield Option((res, newOffset))
 
-              elem.catchAll(e => onError(e) *> ZIO.effect(Some(Result(Set.empty, Set.empty), ()))),
+              elem.catchAll(e =>
+                onHandleMessageError(e) *> ZIO.effect(Some(Result(Set.empty, Set.empty), offset)),
+              ),
             }
-
-          ZIO.effect(stream)
-        }
 
         private def handleMessage(msg: Message, result: Ref[Result]) =
           msg match {

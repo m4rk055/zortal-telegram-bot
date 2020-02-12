@@ -27,7 +27,7 @@ object Main extends App {
 
   override val platform: Platform = PlatformLive.Default.withReportFailure(_ => ())
 
-  def handleZortalFeed(feedCheckDelay: Duration) =
+  def handleZortalFeedUpdates(feedCheckDelay: Duration) =
     ZortalFeedApi.>.getFeed(feedCheckDelay).foreach(newArticles =>
       if (newArticles.length > 0)
         TelegramBot.>.sendArticles(newArticles.take(2))
@@ -35,23 +35,15 @@ object Main extends App {
     )
 
   def handleTelegramMessages =
-    for {
-      envConsole <- ZIO.environment[Console]
-      telegramMessages <- TelegramBot.>.handleMessages(_ =>
-                           putStrLn("Some error with polling")
-                             .provide(envConsole),
-                         )
-      _ <- telegramMessages
-            .foreach(result =>
-              ZIO.foreach(result.subscriptions)(ChatRepository.>.saveChat) *>
-                ZIO.foreach(result.unsubscriptions)(ChatRepository.>.removeChat),
-            )
-    } yield ()
+    TelegramBot.>.handleMessages.foreach(result =>
+      ZIO.foreach(result.subscriptions)(ChatRepository.>.saveChat) *>
+        ZIO.foreach(result.unsubscriptions)(ChatRepository.>.removeChat),
+    )
 
   def program(feedCheckDelay: Duration) =
     for {
       _ <- handleTelegramMessages.fork
-      _ <- handleZortalFeed(feedCheckDelay).fork
+      _ <- handleZortalFeedUpdates(feedCheckDelay).fork
     } yield ()
 
   val httpClientRes = for {
@@ -103,7 +95,7 @@ object Main extends App {
             httpClient,
             zortalUri,
             now.toZonedDateTime,
-            _ => putStrLn("Some error with feed").provide(envConsole),
+            _ => putStrLn("Some error with polling").provide(envConsole),
           ).zortalFeedApi
 
           liveTelegramService = TelegramService(httpClient, telegramUri, telegramBotToken)
@@ -111,6 +103,7 @@ object Main extends App {
                               liveTelegramService.telegramService,
                               inMemChatRepository,
                               botName,
+                              _ => putStrLn("Some error with polling").provide(envConsole),
                             ).map(_.telegramBot)
 
           _ <- program(conf.feedCheckDelaySeconds.seconds).provide(
