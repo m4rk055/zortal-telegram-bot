@@ -2,7 +2,6 @@ package net.zortal.telegram.bot
 
 import zio._
 import zio.console._
-import zio.system
 import zio.system._
 import zio.clock.{ Clock => ZClock }
 import zio.internal.{ Platform, PlatformLive }
@@ -11,18 +10,14 @@ import sttp.model.Uri
 import sttp.client.asynchttpclient.zio.AsyncHttpClientZioBackend
 import java.time.ZonedDateTime
 import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
+import pureconfig._
 
 case class Article(published: ZonedDateTime, title: String, link: String)
 
-case class Config(
-  zortalFeedEndpoint: String,
-  telegramEndpoint: String,
-  feedCheckDelaySeconds: Int,
-)
-
 object Main extends App {
 
-  override val platform: Platform = PlatformLive.Default.withReportFailure(_ => ())
+  override val platform: Platform =
+    PlatformLive.Default.withReportFailure(_ => ())
 
   def handleZortalFeedUpdates(feedCheckDelay: Duration) =
     ZortalFeedApi.>.getFeed(feedCheckDelay).foreach(newArticles =>
@@ -43,25 +38,6 @@ object Main extends App {
       _ <- handleZortalFeedUpdates(feedCheckDelay).fork
     } yield ()
 
-  // TODO: to config
-  val conf = Config(
-    "https://zortal.net/index.php/feed/atom/",
-    "https://api.telegram.org",
-    30,
-  )
-
-  def getEnv(variableName: String) =
-    system
-      .env(variableName)
-      .flatMap {
-        case Some(v) =>
-          ZIO.effect(v)
-        case None =>
-          ZIO.fail(
-            new Throwable(s"$variableName env variable missing"),
-          )
-      }
-
   def getUri(uri: String) =
     ZIO.fromEither(Uri.parse(uri)).mapError(new Throwable(_))
 
@@ -72,12 +48,20 @@ object Main extends App {
         for {
           _ <- putStrLn("START")
 
-          zortalUri        <- getUri(conf.zortalFeedEndpoint)
-          telegramUri      <- getUri(conf.telegramEndpoint)
-          telegramBotToken <- getEnv("ZORTAL_TOKEN")
-          botName          <- getEnv("ZORTAL_BOT_NAME")
+          config <- ZIO
+                     .fromEither(ConfigSource.default.load[Config])
+                     .catchAll(_ => ZIO.fail(new Throwable("Error loading config.")))
 
-          inMemChatRepository <- ChatRepository.Dummy.make().map(_.chatRepository)
+          zortalFeedUrl <- getUri(config.zortal.feedUrl)
+          telegramUrl   <- getUri(config.telegram.url)
+
+          firestoreChatRepository <- FirestoreChatRepository
+                                      .make(
+                                        platform.executor,
+                                        config.firestore.projectId,
+                                        config.firestore.chatsCollection,
+                                      )
+                                      .map(_.chatRepository)
 
           env        <- ZIO.environment[ZEnv]
           envConsole <- ZIO.environment[Console]
@@ -86,20 +70,20 @@ object Main extends App {
           liveZortalFeedApi = ZortalFeedApi(
             env.clock,
             env.random,
-            zortalUri,
+            zortalFeedUrl,
             now.toZonedDateTime,
             _ => putStrLn("Some error with polling").provide(envConsole),
           ).zortalFeedApi
 
-          liveTelegramService = TelegramService(telegramUri, telegramBotToken)
+          liveTelegramService = TelegramService(telegramUrl, config.telegram.token)
           liveTelegramBot <- TelegramBot(
                               liveTelegramService.telegramService,
-                              inMemChatRepository,
-                              botName,
+                              firestoreChatRepository,
+                              config.bot.id,
                               _ => putStrLn("Some error with polling").provide(envConsole),
                             ).map(_.telegramBot)
 
-          _ <- program(conf.feedCheckDelaySeconds.seconds).provide(
+          _ <- program(config.zortal.delay.seconds).provide(
                 new ZortalFeedApi
                   with TelegramBot
                   with ChatRepository
@@ -108,7 +92,7 @@ object Main extends App {
                   with System.Live {
                   val zortalFeedApi  = liveZortalFeedApi
                   val telegramBot    = liveTelegramBot
-                  val chatRepository = inMemChatRepository
+                  val chatRepository = firestoreChatRepository
                 },
               )
 

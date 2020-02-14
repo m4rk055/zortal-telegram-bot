@@ -46,7 +46,7 @@ object TelegramBot {
   def apply(
     telegramService: TelegramService.Service[Any],
     chatRepository: ChatRepository.Service[Any],
-    name: String,
+    botId: String,
     onHandleMessageError: Throwable => Task[Unit],
   ) =
     for {
@@ -92,22 +92,22 @@ object TelegramBot {
 
         private def handleMessage(msg: Message, result: Ref[Result]) =
           msg match {
-            case Message(Some(s"/daj@${`name` }"), _, _, Chat(id), _) =>
+            case Message(Some(s"/daj@${`botId` }"), _, _, Chat(id), _) =>
               result.update(r => r.copy(subscriptions = r.subscriptions + id)) *>
                 telegramService.sendMsg(Subscribe.responseMsg, id)
 
-            case Message(Some(s"/stop@${`name` }"), _, _, Chat(id), _) =>
+            case Message(Some(s"/stop@${`botId` }"), _, _, Chat(id), _) =>
               result.update(r => r.copy(unsubscriptions = r.unsubscriptions + id)) *>
                 telegramService.sendMsg(Unsubscribe.responseMsg, id)
 
-            case Message(Some(s"/help@${`name` }"), _, _, Chat(id), _) =>
+            case Message(Some(s"/help@${`botId` }"), _, _, Chat(id), _) =>
               telegramService.sendMsg(Help.responseMsg, id)
 
-            case Message(_, Some(NewMember(`name`)), _, Chat(id), _) =>
+            case Message(_, Some(NewMember(`botId`)), _, Chat(id), _) =>
               result.update(r => r.copy(subscriptions = r.subscriptions + id)) *>
                 telegramService.sendMsg(Subscribe.responseMsg, id)
 
-            case Message(_, _, Some(LeftMember(`name`)), Chat(id), _) =>
+            case Message(_, _, Some(LeftMember(`botId`)), Chat(id), _) =>
               result.update(r => r.copy(unsubscriptions = r.unsubscriptions + id))
 
             case _ => ZIO.unit
