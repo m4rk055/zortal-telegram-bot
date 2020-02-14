@@ -37,6 +37,8 @@ addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1")
 
 testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework"))
 
+scalafixDependencies in ThisBuild += "com.nequissimus" %% "sort-imports" % "0.3.2"
+
 assemblyJarName in assembly := "zortal.jar"
 
 mainClass in assembly := Some("net.zortal.telegram.bot.Main")
