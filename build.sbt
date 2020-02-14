@@ -48,9 +48,24 @@ mainClass in assembly := Some("net.zortal.telegram.bot.Main")
 // logLevel in assembly := Level.Debug
 
 assemblyMergeStrategy in assembly := {
-  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-  case "module-info.class"           => MergeStrategy.filterDistinctLines
-  case _                             => MergeStrategy.deduplicate
+  case x if Assembly.isConfigFile(x) =>
+    MergeStrategy.concat
+  case PathList(ps @ _*) if Assembly.isReadme(ps.last) || Assembly.isLicenseFile(ps.last) =>
+    MergeStrategy.rename
+  case PathList("META-INF", xs @ _*) =>
+    (xs map { _.toLowerCase }) match {
+      case ("manifest.mf" :: Nil) | ("index.list" :: Nil) | ("dependencies" :: Nil) =>
+        MergeStrategy.discard
+      case ps @ (x :: xs) if ps.last.endsWith(".sf") || ps.last.endsWith(".dsa") =>
+        MergeStrategy.discard
+      case "services" :: xs =>
+        MergeStrategy.filterDistinctLines
+      case ("io.netty.versions.properties" :: Nil) =>
+        MergeStrategy.concat
+      case _ => MergeStrategy.deduplicate
+    }
+  case "module-info.class" => MergeStrategy.filterDistinctLines
+  case _                   => MergeStrategy.deduplicate
 }
 
 enablePlugins(GraalVMNativeImagePlugin)
