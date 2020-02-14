@@ -1,8 +1,9 @@
 package net.zortal.telegram
 
-import zio.duration.Duration
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeUnit._
+
+import zio.duration.Duration
 
 package object bot {
 

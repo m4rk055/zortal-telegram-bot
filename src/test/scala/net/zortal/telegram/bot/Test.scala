@@ -1,14 +1,15 @@
 package net.zortal.telegram.bot
 
-import zio._
-import zio.test._
-import zio.test.Assertion._
-import zio.test.environment.TestClock
-import zio.duration.Duration
+import java.time.OffsetDateTime
+
 import net.zortal.telegram.bot.{ Help, Subscribe, Unsubscribe }
 import sttp.client._
 import sttp.client.testing._
-import java.time.OffsetDateTime
+import zio._
+import zio.duration.Duration
+import zio.test.Assertion._
+import zio.test._
+import zio.test.environment.TestClock
 
 case class SentMessage(msg: String, chatId: Long)
 

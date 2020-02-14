@@ -1,10 +1,11 @@
 package net.zortal.telegram.bot
 
+import java.util.concurrent.TimeUnit
+
+import net.zortal.telegram.bot.Message
+import net.zortal.telegram.bot.TelegramService
 import zio._
 import zio.stream.{ Stream, ZStream }
-import net.zortal.telegram.bot.TelegramService
-import net.zortal.telegram.bot.Message
-import java.util.concurrent.TimeUnit
 
 case class Result(
   subscriptions: Set[Long],

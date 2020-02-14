@@ -1,16 +1,17 @@
 package net.zortal.telegram.bot
 
-import zio._
-import zio.console._
-import zio.system._
-import zio.clock.{ Clock => ZClock }
-import zio.internal.{ Platform, PlatformLive }
-import zio.duration.Duration
-import sttp.model.Uri
-import sttp.client.asynchttpclient.zio.AsyncHttpClientZioBackend
 import java.time.ZonedDateTime
+
 import net.zortal.telegram.bot.{ TelegramBot, ZortalFeedApi }
 import pureconfig._
+import sttp.client.asynchttpclient.zio.AsyncHttpClientZioBackend
+import sttp.model.Uri
+import zio._
+import zio.clock.{ Clock => ZClock }
+import zio.console._
+import zio.duration.Duration
+import zio.internal.{ Platform, PlatformLive }
+import zio.system._
 
 case class Article(published: ZonedDateTime, title: String, link: String)
 

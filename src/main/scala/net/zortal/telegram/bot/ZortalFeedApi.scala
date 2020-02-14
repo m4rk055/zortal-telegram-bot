@@ -1,18 +1,20 @@
 package net.zortal.telegram.bot
 
-import zio._
-import zio.stream.Stream
-import zio.duration.Duration
-import zio.clock.Clock
-import zio.random.Random
-import zio.stream.ZStream
-import net.zortal.telegram.bot.Article
 import java.time.ZonedDateTime
 import java.time.ZonedDateTime
-import org.jsoup.Jsoup
+
 import scala.xml._
-import sttp.model.Uri
+
+import net.zortal.telegram.bot.Article
+import org.jsoup.Jsoup
 import sttp.client._
+import sttp.model.Uri
+import zio._
+import zio.clock.Clock
+import zio.duration.Duration
+import zio.random.Random
+import zio.stream.Stream
+import zio.stream.ZStream
 
 trait ZortalFeedApi {
   val zortalFeedApi: ZortalFeedApi.Service[Any]

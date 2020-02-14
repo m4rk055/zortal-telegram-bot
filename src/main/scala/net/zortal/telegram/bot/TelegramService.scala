@@ -1,10 +1,10 @@
 package net.zortal.telegram.bot
 
-import zio._
 import io.circe._
-import sttp.model.Uri
 import sttp.client._
 import sttp.client.circe._
+import sttp.model.Uri
+import zio._
 
 // TODO: better model
 case class Chat(id: Long)

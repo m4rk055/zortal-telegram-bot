@@ -35,6 +35,8 @@ libraryDependencies ++= Seq(
 addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.11.0" cross CrossVersion.full)
 addCompilerPlugin("com.olegpy"    %% "better-monadic-for" % "0.3.1")
 
+addCommandAlias("fix", "all compile:scalafix test:scalafix")
+
 testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework"))
 
 scalafixDependencies in ThisBuild += "com.nequissimus" %% "sort-imports" % "0.3.2"

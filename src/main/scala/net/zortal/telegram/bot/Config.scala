@@ -1,7 +1,7 @@
 package net.zortal.telegram.bot
 
-import pureconfig._
 import pureconfig.ConfigConvert
+import pureconfig._
 import pureconfig.generic.semiauto._
 
 final case class Config(

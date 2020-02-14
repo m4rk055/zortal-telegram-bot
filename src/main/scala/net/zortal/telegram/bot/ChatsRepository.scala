@@ -1,11 +1,13 @@
 package net.zortal.telegram.bot
 
+import java.util.HashMap
+
+import scala.util.Try
+
+import com.google.api.core._
+import com.google.cloud.firestore._
 import zio._
 import zio.internal.Executor
-import scala.util.Try
-import com.google.cloud.firestore._
-import com.google.api.core._
-import java.util.HashMap
 
 trait ChatRepository {
   val chatRepository: ChatRepository.Service[Any]
