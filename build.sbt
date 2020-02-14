@@ -18,9 +18,9 @@ val SttpVersion  = "2.0.0-RC9"
 val CirceVersion = "0.12.3"
 
 libraryDependencies ++= Seq(
-  "dev.zio" %% "zio"         % ZIOVersion,
-  "dev.zio" %% "zio-streams" % ZIOVersion,
-  // "dev.zio"                %% "zio-config"          % ZIOVersion,
+  "dev.zio"                      %% "zio"                           % ZIOVersion,
+  "dev.zio"                      %% "zio-streams"                   % ZIOVersion,
+  "com.github.pureconfig"        %% "pureconfig"                    % "0.12.2",
   "dev.zio"                      %% "zio-test"                      % ZIOVersion % "test",
   "dev.zio"                      %% "zio-test-sbt"                  % ZIOVersion % "test",
   "com.softwaremill.sttp.client" %% "async-http-client-backend-zio" % SttpVersion,
@@ -29,6 +29,7 @@ libraryDependencies ++= Seq(
   "io.circe"                     %% "circe-parser"                  % CirceVersion,
   "org.scala-lang.modules"       %% "scala-xml"                     % "1.2.0",
   "org.jsoup"                    % "jsoup"                          % "1.11.2",
+  "com.google.cloud"             % "google-cloud-firestore"         % "1.32.3",
 )
 
 addCompilerPlugin("org.typelevel" %% "kind-projector"     % "0.11.0" cross CrossVersion.full)
@@ -38,9 +39,14 @@ testFrameworks := Seq(new TestFramework("zio.test.sbt.ZTestFramework"))
 
 assemblyJarName in assembly := "zortal.jar"
 
+mainClass in assembly := Some("net.zortal.telegram.bot.Main")
+
+// logLevel in assembly := Level.Debug
+
 assemblyMergeStrategy in assembly := {
-  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-  case _                                   => MergeStrategy.first
+  case PathList("META-INF", xs @ _*) => MergeStrategy.discard
+  case "module-info.class"           => MergeStrategy.filterDistinctLines
+  case _                             => MergeStrategy.deduplicate
 }
 
 enablePlugins(GraalVMNativeImagePlugin)
